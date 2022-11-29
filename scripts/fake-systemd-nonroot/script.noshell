@@ -1,0 +1,23 @@
+#####################################################
+# @name: fake-systemd-wsl-root                      #
+# @description: Fake systemd for WSL as root user   #
+# @version: 1.0.0                                   #
+# @author: bostrot                                  #
+# @license: MIT                                     #
+# @git: https://github.com/bostrot/fake-systemd     #
+# @distro: Debian                                   #
+#####################################################
+
+wget https://raw.githubusercontent.com/bostrot/fake-systemd/0d7518a61d71d1716d8dcd5b05a2c4cf57c24f84/systemctl -O /tmp/systemctl.download
+if [ -f /tmp/systemctl.download ]; then 
+    echo "0ba2e32057e7a09977d45a033caf5558ca5f40d2f4f0d75429a7c2fd7eb0c7f7 /tmp/systemctl.download" | sha256sum --check
+    if [ $? -eq 0 ]; then
+        sed -i 's/fake-systemctl start/sudo fake-systemctl start/g' /tmp/systemctl.download
+        sed -i 's/\/var\/log\/fake_systemd.log/\/tmp\/fake_systemd.log/g' /tmp/systemctl.download
+        sudo chmod +x /tmp/systemctl.download
+        sudo mv /tmp/systemctl.download /usr/bin/systemctl
+    else
+        echo "Checksum failed"
+        exit 1
+    fi
+fi
