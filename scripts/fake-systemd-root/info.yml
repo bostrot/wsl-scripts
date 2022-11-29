@@ -1,0 +1,7 @@
+name: fake-systemd-wsl-root
+description: Fake systemd for WSL as root user
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/fake-systemd
+distro: Debian

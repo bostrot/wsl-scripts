@@ -22,14 +22,12 @@ Here is a little example on how you could do that:
         fi
     fi
 
-For metadata please use this format at the top of your script file:
+For metadata please add an `info.yml` file with at least following content:
 
-    #####################################################
-    # @name: fake-systemd-wsl-root                      #
-    # @description: Fake systemd for WSL as root user   #
-    # @version: 1.0.0                                   #
-    # @author: bostrot                                  #
-    # @license: MIT                                     #
-    # @git: https://github.com/bostrot/fake-systemd     #
-    # @distro: Debian                                   #
-    #####################################################
+    name: fake-systemd-wsl-nonroot
+    description: Fake systemd for WSL as non-root user (but with sudo rights)
+    version: 1.0.0
+    author: bostrot
+    license: MIT
+    git: https://github.com/bostrot/fake-systemd
+    distro: Debian
