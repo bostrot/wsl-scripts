@@ -1,4 +1,4 @@
-name: fake-systemd-wsl-root
+name: fake-systemd-root
 description: Fake systemd for WSL as root user
 version: 1.0.0
 author: bostrot

@@ -1,4 +1,4 @@
-name: fake-systemd-wsl-nonroot
+name: fake-systemd-nonroot
 description: Fake systemd for WSL as non-root user (but with sudo rights)
 version: 1.0.0
 author: bostrot

@@ -31,3 +31,5 @@ For metadata please add an `info.yml` file with at least following content:
     license: MIT
     git: https://github.com/bostrot/fake-systemd
     distro: Debian
+
+__Note: The name MUST be the same as the folder name__
