@@ -1,0 +1,7 @@
+name: apt-upgrade
+description: Basic apt upgrade script
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro: Debian
