@@ -1,24 +1,26 @@
-echo 'tput bold; tput setaf 5; echo "time to clean out old apt files and upgrade. Here we go"; tput sgr0' >> /usr/local/bin/upgrade
-echo 'tput bold; tput setaf 5; echo "Starting the cleaning cycle."; tput sgr0'  >> /usr/local/bin/upgrade
+echo "color='tput setaf 5; tput bold" >> /usr/local/bin/upgrade
+echo "reset=tput sgr0"  >> /usr/local/bin/upgrade
+echo '$(color); echo "time to clean out old apt files and upgrade. Here we go."; $(reset)' >> /usr/local/bin/upgrade
+echo '$(color) echo "Starting the cleaning cycle."; $(reset)'  >> /usr/local/bin/upgrade
 echo 'apt clean -y' >> /usr/local/bin/upgrade
 echo 'apt autoremove -y' >> /usr/local/bin/upgrade
-echo 'tput bold; tput setaf 5; echo "updating and upgrading your distro" tput sgr0'  >> /usr/local/bin/upgrade
+echo '$(color); echo "All done cleaning now updating sources and upgrading your distro"; $(reset)'  >> /usr/local/bin/upgrade
 echo 'apt update' >> /usr/local/bin/upgrade
-eco 'apt upgrade -y' >> /usr/local/bin/upgrade
+echo 'apt upgrade -y' >> /usr/local/bin/upgrade
 echo 'apt dist-upgrade -y' >> /usr/local/bin/upgrade
-echo 'tput bold; tput setaf 5; echo "the upgrade has been completed. Enjoy"; tput sgr0' >> /usr/local/bin/upgrade
+echo '$(color); echo "the upgrade has been completed. Enjoy"; $(reset)' >> /usr/local/bin/upgrade
 chmod +x /usr/local/bin/upgrade
 upgrade
 
 # this can now be run with "sudo upgrade" or added to your crontab via the command "sudo crontab -e"
 # select your favorite editor and at the bottom of the page add this line
-# * */# * * * /usr/local/bin/upgrade > /dev/null 2>&1
+#* */# * * * /usr/local/bin/upgrade > /dev/null 2>&1"
 # be sure to remove the first # and change the second one to a number 1-24.
 # the number you pick there will result in the script running every {number you choose} hours
 # personally I do every 12 hours cause I don't wanna get caught with an exploitable system
 # To have this script build the cron entry for you delete the # at the start of the next 4 lines
 
-# crontab -l
-# echo "* */12 * * * /usr/local/bin/upgrade > /dev/null 2>&1" >> crontab_new
-# crontab crontab_new
-# rm crontab_new
+ crontab -l
+ echo "* */12 * * * /usr/local/bin/upgrade > /dev/null 2>&1" >> crontab_new
+ crontab crontab_new
+ rm crontab_new
