@@ -1,6 +1,0 @@
-name: build&RunUpgradeCommand
-description: This script builds a command to clean unneeded apt files and upgrade your debian based system (Ubuntu, Debian or Kali). If you look at the last 3 lines it is also possible to have it set this command to run automatically ever 12 hours. If you want to change the time it might run in change the 12 to a number of your choice representing how many hours apart you want the script to run.
-version: 1.0.0
-license: Debian based (Ubuntu and Kali both)
-git: https://github.com/captainkyds/captainkyds_scripts4wsl.git
-distro: Debian (Ubuntu and
