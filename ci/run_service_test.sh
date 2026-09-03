@@ -1,7 +1,5 @@
 #!/bin/bash
-# Runs one Docker-based script the way the app would (as root, plain sh),
-# then verifies the service actually works: its wslm- container stays
-# running and every published host port accepts a TCP connection.
+# Runs one service script and checks its container and ports.
 set -u
 name="$1"
 dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,8 +16,6 @@ if ! sudo sh "$script"; then
     exit 1
 fi
 
-# The container must still be alive after a settle period — an image that
-# crashes on boot exits within seconds of docker run -d.
 sleep 10
 if [ -z "$(sudo docker ps -q -f name="^${container}$" -f status=running)" ]; then
     echo "FAIL: container $container is not running"
@@ -27,8 +23,6 @@ if [ -z "$(sudo docker ps -q -f name="^${container}$" -f status=running)" ]; the
     exit 1
 fi
 
-# Every advertised port must accept a TCP connection within the budget —
-# heavier images (MySQL, ClickHouse) need a while on a cold start.
 for port in $ports; do
     ok=""
     for _ in $(seq 1 45); do

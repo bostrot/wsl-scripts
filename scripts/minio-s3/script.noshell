@@ -7,8 +7,6 @@
 # @git: https://github.com/bostrot/wsl-scripts
 # @distro: Debian, Ubuntu, Alpine, Fedora
 #####################################################
-# One-click local service via Docker. Idempotent: re-running replaces the
-# container (wslm-minio) with a fresh one on the official image.
 
 if ! command -v docker >/dev/null 2>&1; then
     if command -v apt-get >/dev/null 2>&1; then

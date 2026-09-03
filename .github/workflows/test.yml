@@ -24,9 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: list
-        # Only the Docker-based service scripts run on the shared runner;
-        # the legacy scripts (fake-systemd, apt-upgrade, ...) mutate the
-        # host system and are covered by the structure job alone.
+        # Only Docker service scripts are safe to run on a shared runner.
         run: |
           services=$(for d in scripts/*/; do
             name=$(basename "$d")

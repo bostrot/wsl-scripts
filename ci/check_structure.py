@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""Validates every script folder against the repo's format.
-
-Checked for each scripts/<name>/:
-  - info.yml and script.noshell exist
-  - info.yml is valid YAML with all required keys, correct types
-  - the yaml `name` equals the folder name (the app relies on this)
-  - version looks like semver
-  - script.noshell is non-empty and passes `sh -n`
-Across the Docker-based scripts (those managing a wslm-* container):
-  - container names are unique
-  - published host ports are unique, so everything can run side by side
-"""
+"""Checks every script folder against the repo format."""
 import re
 import subprocess
 import sys
