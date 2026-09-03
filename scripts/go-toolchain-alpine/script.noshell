@@ -1,3 +1,4 @@
 apk update
 apk add --no-cache go
-echo 'export PATH=$PATH:/usr/lib/go/bin:$HOME/go/bin' >> "$HOME/.profile" || true
+echo 'export PATH=$PATH:/usr/lib/go/bin:$HOME/go/bin' > /etc/profile.d/go.sh
+chmod 644 /etc/profile.d/go.sh

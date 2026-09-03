@@ -1,5 +1,5 @@
 apk update
-apk add --no-cache bash icu-libs krb5-libs libgcc libintl libssl1.1 libstdc++ zlib
+apk add --no-cache bash icu-libs krb5-libs libgcc libintl libssl3 libstdc++ zlib
 wget https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
 chmod +x /tmp/dotnet-install.sh
 /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet

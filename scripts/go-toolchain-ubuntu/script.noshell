@@ -2,8 +2,22 @@ apt-get update
 apt-get install -y wget
 GO_VERSION=$(wget -qO- https://go.dev/VERSION?m=text | head -1)
 wget "https://go.dev/dl/${GO_VERSION}.linux-amd64.tar.gz" -O /tmp/go.tar.gz
+GO_SHA=$(wget -qO- "https://go.dev/dl/?mode=json&include=all" | \
+    tr ',{}' '\n\n\n' | grep -A20 "\"${GO_VERSION}.linux-amd64.tar.gz\"" | \
+    grep '"sha256"' | head -1 | cut -d'"' -f4)
+if [ -z "$GO_SHA" ]; then
+    echo "No checksum published for ${GO_VERSION}"
+    rm -f /tmp/go.tar.gz
+    exit 1
+fi
+echo "$GO_SHA  /tmp/go.tar.gz" | sha256sum --check
+if [ $? -ne 0 ]; then
+    echo "Checksum failed"
+    rm -f /tmp/go.tar.gz
+    exit 1
+fi
 rm -rf /usr/local/go
 tar -C /usr/local -xzf /tmp/go.tar.gz
-echo 'export PATH=$PATH:/usr/local/go/bin' >> "$HOME/.bashrc" || true
-echo 'export PATH=$PATH:$HOME/go/bin' >> "$HOME/.bashrc" || true
+echo 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin' > /etc/profile.d/go.sh
+chmod 644 /etc/profile.d/go.sh
 rm /tmp/go.tar.gz

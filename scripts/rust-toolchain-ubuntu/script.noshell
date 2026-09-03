@@ -1,6 +1,14 @@
 apt-get update
 apt-get install -y curl build-essential
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup.sh
-sh /tmp/rustup.sh -y --default-toolchain stable
-source "$HOME/.cargo/env" || true
-echo 'source "$HOME/.cargo/env"' >> "$HOME/.bashrc" || true
+export RUSTUP_HOME=/usr/local/rustup
+export CARGO_HOME=/usr/local/cargo
+sh /tmp/rustup.sh -y --no-modify-path --default-toolchain stable
+chmod -R a+rX /usr/local/rustup /usr/local/cargo
+cat > /etc/profile.d/rust.sh <<'PROFILE'
+export RUSTUP_HOME=/usr/local/rustup
+export CARGO_HOME=/usr/local/cargo
+export PATH=$PATH:/usr/local/cargo/bin
+PROFILE
+chmod 644 /etc/profile.d/rust.sh
+rm -f /tmp/rustup.sh

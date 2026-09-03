@@ -1,3 +1,4 @@
 pacman -Syu --noconfirm
 pacman -S --noconfirm go
-echo 'export PATH=$PATH:$HOME/go/bin' >> "$HOME/.bashrc" || true
+echo 'export PATH=$PATH:$HOME/go/bin' > /etc/profile.d/go.sh
+chmod 644 /etc/profile.d/go.sh
