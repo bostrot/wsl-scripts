@@ -1,0 +1,11 @@
+name: code-server
+description: VS Code in the browser (code-server) on port 8088. No auth (development default). Home directory and extensions kept in a named volume.
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora

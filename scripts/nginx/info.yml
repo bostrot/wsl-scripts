@@ -1,0 +1,11 @@
+name: nginx
+description: Nginx static web server on port 8081, serving the wslm-nginx-html volume (default welcome page until you add files).
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora

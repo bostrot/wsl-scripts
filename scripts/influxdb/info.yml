@@ -1,0 +1,11 @@
+name: influxdb
+description: InfluxDB 2 time-series database with its UI and API on port 8086. User admin, password adminadmin, org wslm, bucket default. Data kept in a named volume.
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora

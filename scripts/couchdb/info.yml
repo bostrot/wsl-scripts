@@ -1,0 +1,11 @@
+name: couchdb
+description: Apache CouchDB 3 document database with its API and Fauxton UI on port 5984. User admin, password admin. Data kept in a named volume.
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora

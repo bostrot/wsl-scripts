@@ -1,0 +1,11 @@
+name: jenkins
+description: Jenkins LTS CI server with its web UI on port 8090 and agent port 50000. Jobs kept in a named volume.
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora

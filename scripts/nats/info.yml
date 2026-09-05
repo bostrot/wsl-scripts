@@ -1,0 +1,11 @@
+name: nats
+description: NATS 2 message broker with JetStream on port 4222 and its monitoring UI on port 8222. No auth (development default). Streams kept in a named volume.
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora

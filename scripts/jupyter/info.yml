@@ -1,0 +1,11 @@
+name: jupyter
+description: JupyterLab (minimal notebook image) on port 8888. No token or password (development default). Notebooks in /home/jovyan/work kept in a named volume.
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora

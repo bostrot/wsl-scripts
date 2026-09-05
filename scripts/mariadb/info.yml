@@ -1,0 +1,11 @@
+name: mariadb
+description: MariaDB 11 database server on port 3307. User root, password root, database app. Data kept in a named volume.
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora

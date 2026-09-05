@@ -1,0 +1,11 @@
+name: vault
+description: HashiCorp Vault secrets manager in dev mode on port 8200 with root token root. Dev mode keeps everything in memory (lost on restart).
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora

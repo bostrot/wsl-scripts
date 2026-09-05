@@ -1,0 +1,11 @@
+name: keycloak
+description: Keycloak identity and access management in dev mode with its admin console on port 8180. Admin admin / admin. Realms kept in a named volume.
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora

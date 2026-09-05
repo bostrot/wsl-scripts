@@ -1,0 +1,29 @@
+#####################################################
+# @name: couchdb
+# @description: Apache CouchDB 3 document database with its API and Fauxton UI on port 5984. User admin, password admin. Data kept in a named volume.
+# @version: 1.0.0
+# @author: bostrot
+# @license: MIT
+# @git: https://github.com/bostrot/wsl-scripts
+# @distro: Debian, Ubuntu, Alpine, Fedora
+#####################################################
+
+if ! command -v docker >/dev/null 2>&1; then
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io
+    elif command -v apk >/dev/null 2>&1; then
+        apk add --no-cache docker
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y -q docker
+    else
+        echo "No supported package manager found (apt/apk/dnf)."; exit 1
+    fi
+fi
+(service docker start >/dev/null 2>&1 || rc-service docker start >/dev/null 2>&1 || dockerd >/dev/null 2>&1 &) || true
+for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do docker info >/dev/null 2>&1 && break; sleep 1; done
+docker info >/dev/null 2>&1 || { echo "Docker daemon did not come up."; exit 1; }
+
+docker rm -f wslm-couchdb >/dev/null 2>&1 || true
+docker pull couchdb:3
+docker run -d --name wslm-couchdb --restart unless-stopped -p 5984:5984 -e COUCHDB_USER=admin -e COUCHDB_PASSWORD=admin -v wslm-couchdb-data:/opt/couchdb/data couchdb:3
+echo "CouchDB is up: http://localhost:5984/_utils (admin / admin). Data persists in the wslm-couchdb-data volume."

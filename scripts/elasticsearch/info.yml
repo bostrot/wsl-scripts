@@ -1,0 +1,11 @@
+name: elasticsearch
+description: Elasticsearch 8 single-node search cluster on port 9200. Security disabled, 512 MB heap. Indices kept in a named volume.
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora

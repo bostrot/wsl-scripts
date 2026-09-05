@@ -1,0 +1,11 @@
+name: docker-registry
+description: Private Docker image registry on port 5000 (push with docker tag image localhost:5000/image && docker push). Images kept in a named volume.
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora

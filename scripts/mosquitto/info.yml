@@ -1,0 +1,11 @@
+name: mosquitto
+description: Eclipse Mosquitto 2 MQTT broker on port 1883. Anonymous clients allowed (development default).
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora

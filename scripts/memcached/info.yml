@@ -1,0 +1,11 @@
+name: memcached
+description: Memcached 1.6 in-memory cache on port 11211. No auth (development default).
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora
