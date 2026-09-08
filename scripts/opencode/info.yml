@@ -1,0 +1,12 @@
+name: opencode
+description: OpenCode AI coding agent CLI on PATH. Run `opencode` for the TUI, or `opencode web --port 4096` for the browser UI
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora
+  - Arch
