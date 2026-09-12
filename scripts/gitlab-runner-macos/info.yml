@@ -1,0 +1,7 @@
+name: gitlab-runner-macos
+description: Self-hosted GitLab Runner on macOS (a macOS VM or any Mac), started at login. Edit the snippet first and paste your GitLab URL and the glrt- runner token from Settings > CI/CD > Runners > New project runner
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro: macOS

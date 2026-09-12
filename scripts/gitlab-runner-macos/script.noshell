@@ -1,0 +1,159 @@
+#####################################################
+# @name: gitlab-runner-macos
+# @description: Self-hosted GitLab Runner on macOS (a macOS VM or any Mac), started at login. Edit the snippet first and paste your GitLab URL and the glrt- runner token from Settings > CI/CD > Runners > New project runner
+# @version: 1.0.0
+# @author: bostrot
+# @license: MIT
+# @git: https://github.com/bostrot/wsl-scripts
+# @distro: macOS
+#####################################################
+# The macOS counterpart of gitlab-runner, for jobs that need macOS or Xcode.
+# In a macOS VM the app runs snippets over SSH, so turn on Remote Login in
+# the guest (System Settings > General > Sharing) and set the VM's start
+# user to your macOS account. On any other Mac, fill in the values and run
+# it in Terminal with sh.
+#
+# Runs as that user, not root, the way GitLab documents it for macOS: jobs
+# get the user's keychain and toolchains. Everything lives in
+# ~/gitlab-runner — the binary for this Mac's CPU (checked against the
+# SHA-256 list GitLab publishes next to it), config.toml and the builds —
+# and a LaunchAgent starts the runner whenever the user is logged in; for a
+# VM, turn on automatic login so that happens at boot. Left empty, url and
+# token make it only install and print how to register later.
+#
+# Idempotent: re-running updates the binary when GitLab has a newer one and
+# never registers the same glrt- token twice.
+
+# ===== Fill in before running ============================================
+# Your GitLab instance, e.g. https://gitlab.com
+url=""
+# Runner authentication token (glrt-...): in the project open Settings >
+# CI/CD > Runners > New project runner, choose macOS, tick "Run untagged
+# jobs", Create runner, and copy the token it shows. Group and instance
+# runners work too. A legacy registration token is accepted as well.
+token=""
+# Optional: the runner's name (default: this Mac's name).
+name=""
+# =========================================================================
+# RUNNER_URL, RUNNER_TOKEN and RUNNER_NAME in the environment win over the
+# values above — that is how CI drives this without editing it.
+url="${RUNNER_URL:-$url}"
+token="${RUNNER_TOKEN:-$token}"
+name="${RUNNER_NAME:-$name}"
+[ -n "$name" ] || name=$(scutil --get LocalHostName 2>/dev/null || uname -n)
+dir="${RUNNER_DIR:-$HOME/gitlab-runner}"
+bin="$dir/gitlab-runner"
+config="$dir/config.toml"
+
+if [ "$(uname -s)" != Darwin ]; then
+    echo "This is the macOS runner. In WSL or a Linux VM use the gitlab-runner snippet."
+    exit 1
+fi
+if [ "$(id -u)" -eq 0 ]; then
+    echo "Run this as your macOS user, not root: the runner belongs in that user's login session. In the app, set this VM's start user to your macOS account."
+    exit 1
+fi
+case "$(uname -m)" in
+    arm64) arch=arm64 ;;
+    x86_64) arch=amd64 ;;
+    *) echo "GitLab publishes no macOS runner for this CPU ($(uname -m))."; exit 1 ;;
+esac
+if [ -n "$url$token" ] && { [ -z "$url" ] || [ -z "$token" ]; }; then
+    echo "Fill in both url and token to register the runner, or neither to only install it."
+    exit 1
+fi
+
+# release.sha256 lists "<sha256>  binaries/gitlab-runner-darwin-<arch>" for
+# every file in the same "latest" folder as the binary.
+base=https://gitlab-runner-downloads.s3.amazonaws.com/latest
+sha=$(curl -fsSL "$base/release.sha256" | awk -v f="binaries/gitlab-runner-darwin-$arch" '$2 == f || $2 == "*" f { print $1 }')
+if [ ${#sha} -ne 64 ]; then
+    echo "Could not get GitLab's checksum for gitlab-runner-darwin-$arch."
+    exit 1
+fi
+mkdir -p "$dir"
+if [ -x "$bin" ] && echo "$sha  $bin" | shasum -a 256 -c - >/dev/null 2>&1; then
+    echo "The latest GitLab Runner is already installed."
+else
+    curl -fsSL "$base/binaries/gitlab-runner-darwin-$arch" -o "$bin.download" || {
+        echo "Could not download gitlab-runner-darwin-$arch."
+        rm -f "$bin.download"
+        exit 1
+    }
+    if ! echo "$sha  $bin.download" | shasum -a 256 -c - >/dev/null 2>&1; then
+        echo "Checksum failed for gitlab-runner-darwin-$arch."
+        rm -f "$bin.download"
+        exit 1
+    fi
+    chmod 755 "$bin.download"
+    # A rename, not a copy: a running runner keeps its old inode.
+    mv -f "$bin.download" "$bin"
+fi
+installed=$("$bin" --version 2>/dev/null | sed -n 's/^Version: *//p')
+if [ -z "$installed" ]; then
+    echo "$bin is installed but will not run."
+    exit 1
+fi
+
+if [ -n "$token" ]; then
+    if [ -f "$config" ] && grep -qF "token = \"$token\"" "$config"; then
+        echo "This token is already registered in $config."
+    else
+        set -- register --non-interactive --config "$config" --url "$url" --name "$name" --executor shell
+        case "$token" in
+            glrt-*) set -- "$@" --token "$token" ;;
+            # Legacy registration tokens carry their settings on the command line.
+            *) set -- "$@" --registration-token "$token" --run-untagged=true ;;
+        esac
+        if ! "$bin" "$@"; then
+            echo "Registering with $url failed. Check the URL and that the token is the one GitLab showed for this runner."
+            exit 1
+        fi
+    fi
+fi
+
+if ! { [ -f "$config" ] && grep -q '^\[\[runners\]\]' "$config"; }; then
+    echo "GitLab Runner $installed is installed in $dir, not registered yet."
+    echo "Edit this snippet: set url and token (Settings > CI/CD > Runners > New project runner), then run it again."
+    exit 0
+fi
+
+# install writes ~/Library/LaunchAgents/gitlab-runner.plist for this user
+# (a second install just fails, which is fine) and start loads it. launchd
+# can refuse a LaunchAgent from an SSH session, in which case the runner
+# runs in the background instead.
+log="$dir/runner.log"
+pidfile="$dir/runner.pid"
+# A runner an earlier run left in the background would double up with the
+# LaunchAgent, or keep an old binary. SIGQUIT lets it finish its current jobs.
+# Only while the pid is still that runner: the file outlives a reboot, and by
+# then the number can belong to any other process.
+pid=$(cat "$pidfile" 2>/dev/null)
+if [ -n "$pid" ] && ps -p "$pid" -o command= 2>/dev/null | grep -qF "$bin run"; then
+    kill -QUIT "$pid"
+fi
+rm -f "$pidfile"
+"$bin" install --working-directory "$dir" --config "$config" >/dev/null 2>&1
+if "$bin" restart >/dev/null 2>&1 && sleep 2 && "$bin" status >/dev/null 2>&1; then
+    how="as a LaunchAgent that starts at login"
+else
+    nohup "$bin" run --working-directory "$dir" --config "$config" >>"$log" 2>&1 </dev/null &
+    echo $! >"$pidfile"
+    sleep 3
+    if ! kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+        tail -20 "$log"
+        echo "GitLab Runner did not stay up (log: $log)."
+        exit 1
+    fi
+    how="in the background (log: $log) until this Mac restarts; launchd would not take the LaunchAgent from this session, so log in at the Mac's screen and run this again to have it start at login"
+fi
+
+# verify asks GitLab whether each registered runner is still accepted.
+check=$("$bin" verify --config "$config" 2>&1)
+if ! printf '%s' "$check" | grep -q "is valid"; then
+    printf '%s\n' "$check"
+    echo "GitLab did not accept the runner."
+    exit 1
+fi
+echo "GitLab Runner $installed \"$name\" (shell executor) is online, $how."
+echo "Registered runners live in $config. To remove one: $bin unregister --config $config --name <name>"

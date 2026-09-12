@@ -1,0 +1,12 @@
+name: gitlab-runner
+description: Self-hosted GitLab Runner as a service (shell or docker executor). Edit the snippet first and paste your GitLab URL and the glrt- runner token from Settings > CI/CD > Runners > New project runner
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora
+  - Arch

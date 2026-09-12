@@ -1,0 +1,11 @@
+name: github-runner
+description: Self-hosted GitHub Actions runner as a service. Edit the snippet first and paste your repo/org URL and the registration token from Settings > Actions > Runners > New self-hosted runner
+version: 1.0.0
+author: bostrot
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Fedora
+  - Arch

@@ -1,0 +1,168 @@
+#####################################################
+# @name: github-runner-macos
+# @description: Self-hosted GitHub Actions runner on macOS (a macOS VM or any Mac), started at login. Edit the snippet first and paste your repo/org URL and the registration token from Settings > Actions > Runners > New self-hosted runner
+# @version: 1.0.0
+# @author: bostrot
+# @license: MIT
+# @git: https://github.com/bostrot/wsl-scripts
+# @distro: macOS
+#####################################################
+# The macOS counterpart of github-runner, for jobs that need macOS or Xcode.
+# In a macOS VM the app runs snippets over SSH, so turn on Remote Login in
+# the guest (System Settings > General > Sharing) and set the VM's start
+# user to your macOS account. On any other Mac, fill in the values and run
+# it in Terminal with sh.
+#
+# Runs as that user, not root: GitHub's runner refuses root, and jobs on a
+# Mac usually want the user's keychain and toolchains. Installs to
+# ~/actions-runner (the build for this Mac's CPU, checked against the
+# SHA-256 GitHub publishes in the release notes), registers, and adds a
+# LaunchAgent so the runner starts whenever the user is logged in — for a
+# VM, turn on automatic login so that happens at boot. Left empty, url and
+# token make it only install and print how to register later.
+#
+# Idempotent: a runner that is already registered is left registered and
+# just (re)started; move it elsewhere by removing it first (see the end).
+
+# ===== Fill in before running ============================================
+# Where the runner registers: a repository (https://github.com/OWNER/REPO)
+# or an organisation (https://github.com/ORG).
+url=""
+# Registration token: Settings > Actions > Runners > New self-hosted runner,
+# the value after --token. GitHub expires it an hour after showing it.
+token=""
+# Optional: the runner's name (default: this Mac's name) and extra
+# comma-separated labels on top of self-hosted, macOS and the architecture.
+name=""
+labels=""
+# =========================================================================
+# RUNNER_URL, RUNNER_TOKEN, RUNNER_NAME and RUNNER_LABELS in the environment
+# win over the values above — that is how CI drives this without editing it.
+url="${RUNNER_URL:-$url}"
+token="${RUNNER_TOKEN:-$token}"
+name="${RUNNER_NAME:-$name}"
+labels="${RUNNER_LABELS:-$labels}"
+[ -n "$name" ] || name=$(scutil --get LocalHostName 2>/dev/null || uname -n)
+dir="${RUNNER_DIR:-$HOME/actions-runner}"
+
+if [ "$(uname -s)" != Darwin ]; then
+    echo "This is the macOS runner. In WSL or a Linux VM use the github-runner snippet."
+    exit 1
+fi
+if [ "$(id -u)" -eq 0 ]; then
+    echo "Run this as your macOS user, not root: GitHub's runner refuses root. In the app, set this VM's start user to your macOS account."
+    exit 1
+fi
+case "$(uname -m)" in
+    arm64) arch=arm64 ;;
+    x86_64) arch=x64 ;;
+    *) echo "GitHub publishes no macOS runner for this CPU ($(uname -m))."; exit 1 ;;
+esac
+if [ -n "$url$token" ] && { [ -z "$url" ] || [ -z "$token" ]; }; then
+    echo "Fill in both url and token to register the runner, or neither to only install it."
+    exit 1
+fi
+
+if [ -f "$dir/.runner" ]; then
+    echo "A runner is already registered in $dir, keeping it (the runner updates itself)."
+else
+    # The release notes carry one "<!-- BEGIN SHA osx-arm64 -->...<!-- END" per
+    # tarball; the API returns them inside the JSON body, on one line.
+    release=$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest) || {
+        echo "Could not ask GitHub for the latest runner release."
+        exit 1
+    }
+    version=$(printf '%s' "$release" | grep -o '"tag_name": *"v[0-9.]*"' | head -1 | grep -o '[0-9][0-9.]*')
+    sha=$(printf '%s' "$release" | grep -o "BEGIN SHA osx-$arch -->[0-9a-f]*" | head -1 | sed 's/.*-->//')
+    if [ -z "$version" ] || [ ${#sha} -ne 64 ]; then
+        echo "The latest runner release lists no version or no osx-$arch checksum."
+        exit 1
+    fi
+    if [ "$("$dir/bin/Runner.Listener" --version 2>/dev/null)" = "$version" ]; then
+        echo "Runner $version is already unpacked in $dir."
+    else
+        tarball="actions-runner-osx-$arch-$version.tar.gz"
+        tmp="${TMPDIR:-/tmp}/$tarball"
+        curl -fsSL "https://github.com/actions/runner/releases/download/v$version/$tarball" -o "$tmp" || {
+            echo "Could not download $tarball."
+            rm -f "$tmp"
+            exit 1
+        }
+        if ! echo "$sha  $tmp" | shasum -a 256 -c - >/dev/null 2>&1; then
+            echo "Checksum failed for $tarball."
+            rm -f "$tmp"
+            exit 1
+        fi
+        mkdir -p "$dir"
+        tar -xzf "$tmp" -C "$dir" || { echo "Could not unpack $tarball."; rm -f "$tmp"; exit 1; }
+        rm -f "$tmp"
+        echo "Runner $version unpacked to $dir."
+    fi
+fi
+installed=$("$dir/bin/Runner.Listener" --version 2>/dev/null)
+if [ -z "$installed" ]; then
+    echo "The runner is unpacked in $dir but will not start."
+    exit 1
+fi
+
+if [ ! -f "$dir/.runner" ]; then
+    if [ -z "$url" ]; then
+        echo "GitHub Actions runner $installed is installed in $dir, not registered yet."
+        echo "Edit this snippet: set url and token (Settings > Actions > Runners > New self-hosted runner), then run it again."
+        exit 0
+    fi
+    set -- --unattended --replace --url "$url" --token "$token" --name "$name" --work _work
+    [ -n "$labels" ] && set -- "$@" --labels "$labels"
+    if ! (cd "$dir" && ./config.sh "$@"); then
+        echo "Registering with $url failed. Registration tokens expire after an hour: get a fresh one and run the snippet again."
+        exit 1
+    fi
+fi
+
+# svc.sh writes ~/Library/LaunchAgents/<service>.plist and records its path
+# in .service. launchctl can refuse to load it (it reports that on stdout
+# and still exits 0), so whether the runner came online is checked from
+# its log, and when it did not it runs in the background instead.
+[ -f "$dir/.service" ] || (cd "$dir" && ./svc.sh install) || { echo "Could not install the runner's LaunchAgent."; exit 1; }
+plist=$(cat "$dir/.service")
+label=$(basename "$plist" .plist)
+log="$HOME/Library/Logs/$label/stdout.log"
+# A runner an earlier run left in the background holds the runner's session,
+# and a second copy would never connect. RUNNER_MANUALLY_TRAP_SIG (below)
+# makes run.sh pass the TERM on to the listener instead of orphaning it.
+# runner.pid outlives a reboot, and by then its number can belong to any
+# other process; it only counts while it is still our run.sh.
+pid=$(cat "$dir/runner.pid" 2>/dev/null)
+if [ -n "$pid" ] && ps -p "$pid" -o command= 2>/dev/null | grep -qF "$dir/run.sh"; then
+    kill "$pid" && sleep 3
+fi
+rm -f "$dir/runner.pid"
+launchctl unload "$plist" >/dev/null 2>&1
+: >"$log" 2>/dev/null
+launchctl load -w "$plist" >/dev/null 2>&1
+for _i in $(seq 1 30); do
+    grep -q "Listening for Jobs" "$log" 2>/dev/null && break
+    sleep 1
+done
+if grep -q "Listening for Jobs" "$log" 2>/dev/null; then
+    how="as the LaunchAgent $label, which starts at login"
+else
+    launchctl unload "$plist" >/dev/null 2>&1
+    log="$dir/runner.log"
+    : >"$log"
+    # Only nohup is backgrounded, so $! is run.sh itself.
+    (cd "$dir" || exit 1; RUNNER_MANUALLY_TRAP_SIG=1 nohup "$dir/run.sh" >>"$log" 2>&1 </dev/null & echo $! >"$dir/runner.pid")
+    for _i in $(seq 1 30); do
+        grep -q "Listening for Jobs" "$log" 2>/dev/null && break
+        sleep 1
+    done
+    if ! grep -q "Listening for Jobs" "$log" 2>/dev/null; then
+        tail -20 "$log"
+        echo "The runner did not come online (log: $log)."
+        exit 1
+    fi
+    how="in the background (log: $log) until this Mac restarts; launchd would not take the LaunchAgent from this session, so log in at the Mac's screen and run this again to have it start at login"
+fi
+
+echo "GitHub Actions runner $installed \"$name\" is online, $how."
+echo "Target it from a workflow with runs-on: [self-hosted, macOS]. To remove it: cd $dir && ./svc.sh uninstall; ./config.sh remove --token <removal token from the runner's page on GitHub>"

@@ -1,0 +1,215 @@
+#####################################################
+# @name: gitlab-runner
+# @description: Self-hosted GitLab Runner as a service (shell or docker executor). Edit the snippet first and paste your GitLab URL and the glrt- runner token from Settings > CI/CD > Runners > New project runner
+# @version: 1.0.0
+# @author: bostrot
+# @license: MIT
+# @git: https://github.com/bostrot/wsl-scripts
+# @distro: Debian, Ubuntu, Alpine, Fedora, Arch
+#####################################################
+# Installs GitLab Runner (https://docs.gitlab.com/runner/) from GitLab's
+# static binary rather than its package repositories, so one script covers
+# every distro, Alpine included. The binary is checked against the SHA-256
+# list GitLab publishes next to it, and picked by CPU, so the same snippet
+# works in a WSL distro and in a Linux VM on an Apple Silicon Mac. Jobs run
+# as a dedicated gitlab-runner account.
+#
+# With url and token filled in below it registers the runner and starts it:
+# as a service when the distro has a service manager, otherwise in the
+# background for as long as the distro runs. Left empty, it only installs
+# and prints how to register later.
+#
+# Idempotent: re-running updates the binary when GitLab has a newer one and
+# never registers the same glrt- token twice.
+
+# ===== Fill in before running ============================================
+# Your GitLab instance, e.g. https://gitlab.com
+url=""
+# Runner authentication token (glrt-...): in the project open Settings >
+# CI/CD > Runners > New project runner, tick "Run untagged jobs", Create
+# runner, and copy the token it shows. Group and instance runners work too.
+# A legacy registration token is accepted as well.
+token=""
+# Optional: the runner's name (default: this machine's name plus the WSL
+# distro's), the executor (shell runs jobs right here; docker runs each job
+# in a container) and, for docker, the default image.
+name=""
+executor="shell"
+image="alpine:latest"
+# =========================================================================
+# RUNNER_URL, RUNNER_TOKEN, RUNNER_NAME, RUNNER_EXECUTOR and RUNNER_IMAGE in
+# the environment win over the values above — that is how CI drives this
+# without editing it.
+url="${RUNNER_URL:-$url}"
+token="${RUNNER_TOKEN:-$token}"
+name="${RUNNER_NAME:-$name}"
+executor="${RUNNER_EXECUTOR:-$executor}"
+image="${RUNNER_IMAGE:-$image}"
+# Every WSL distro on a PC shares its Windows hostname, so the distro name
+# goes in too; otherwise a second distro would take over the first's runner.
+[ -n "$name" ] || name=$(printf '%s' "$(uname -n)${WSL_DISTRO_NAME:+-$WSL_DISTRO_NAME}" | tr -c 'A-Za-z0-9._-' -)
+bin=/usr/local/bin/gitlab-runner
+config=/etc/gitlab-runner/config.toml
+account=gitlab-runner
+
+if [ "$(uname -s)" != Linux ]; then
+    echo "This is the Linux runner. On macOS use the gitlab-runner-macos snippet."
+    exit 1
+fi
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Run this as root (the app's default for snippets): it creates the $account account and installs $bin."
+    exit 1
+fi
+case "$(uname -m)" in
+    x86_64|amd64) arch=amd64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    armv7*|armv8l) arch=arm ;;
+    i386|i686) arch=386 ;;
+    riscv64|ppc64le|s390x) arch=$(uname -m) ;;
+    *) echo "GitLab publishes no runner for this CPU ($(uname -m))."; exit 1 ;;
+esac
+if [ -n "$url$token" ] && { [ -z "$url" ] || [ -z "$token" ]; }; then
+    echo "Fill in both url and token to register the runner, or neither to only install it."
+    exit 1
+fi
+case "$executor" in
+    shell|docker) ;;
+    *) echo "executor must be shell or docker, not '$executor'."; exit 1 ;;
+esac
+
+# git and bash are what the shell executor runs jobs with; Alpine has
+# neither out of the box, and the slimmest images lack curl.
+missing=""
+for tool in curl git bash; do
+    command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+done
+if [ "$executor" = docker ] && ! command -v docker >/dev/null 2>&1; then
+    echo "The docker executor needs Docker in this distro; install it first (e.g. the docker-toolchain snippet)."
+    exit 1
+fi
+# $missing stays unquoted below on purpose: it is a list of package names.
+if [ -n "$missing" ]; then
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $missing ca-certificates
+    elif command -v apk >/dev/null 2>&1; then
+        apk add --no-cache $missing ca-certificates
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y -q $missing
+    elif command -v pacman >/dev/null 2>&1; then
+        # -u as well: a bare -Sy is a partial upgrade, which Arch does not support.
+        pacman -Syu --noconfirm --needed $missing
+    else
+        echo "No supported package manager found (apt/apk/dnf/pacman) to install:$missing"
+        exit 1
+    fi || { echo "Could not install:$missing"; exit 1; }
+fi
+
+# release.sha256 lists "<sha256>  binaries/gitlab-runner-linux-<arch>" for
+# every file in the same "latest" folder as the binary.
+base=https://gitlab-runner-downloads.s3.amazonaws.com/latest
+sha=$(curl -fsSL "$base/release.sha256" | awk -v f="binaries/gitlab-runner-linux-$arch" '$2 == f || $2 == "*" f { print $1 }')
+if [ ${#sha} -ne 64 ]; then
+    echo "Could not get GitLab's checksum for gitlab-runner-linux-$arch."
+    exit 1
+fi
+if [ -x "$bin" ] && echo "$sha  $bin" | sha256sum -c - >/dev/null 2>&1; then
+    echo "The latest GitLab Runner is already installed."
+else
+    curl -fsSL "$base/binaries/gitlab-runner-linux-$arch" -o "$bin.download" || {
+        echo "Could not download gitlab-runner-linux-$arch."
+        rm -f "$bin.download"
+        exit 1
+    }
+    if ! echo "$sha  $bin.download" | sha256sum -c - >/dev/null 2>&1; then
+        echo "Checksum failed for gitlab-runner-linux-$arch."
+        rm -f "$bin.download"
+        exit 1
+    fi
+    chmod 755 "$bin.download"
+    # A rename, not a copy: a running runner keeps its old inode.
+    mv -f "$bin.download" "$bin"
+fi
+installed=$("$bin" --version 2>/dev/null | sed -n 's/^Version: *//p')
+if [ -z "$installed" ]; then
+    echo "$bin is installed but will not run."
+    exit 1
+fi
+
+if ! id "$account" >/dev/null 2>&1; then
+    if command -v useradd >/dev/null 2>&1; then
+        useradd --create-home --shell /bin/bash "$account"
+    else
+        adduser -D -s /bin/bash "$account"
+    fi || { echo "Could not create the $account account."; exit 1; }
+fi
+home=$(getent passwd "$account" 2>/dev/null | cut -d: -f6)
+[ -n "$home" ] || home=$(awk -F: -v u="$account" '$1 == u { print $6 }' /etc/passwd)
+# Debian's skeleton .bash_logout clears the console, which fails every
+# shell-executor job at "prepare environment" (GitLab's docs say remove it).
+rm -f "$home/.bash_logout"
+
+registered() { [ -f "$config" ] && grep -q '^\[\[runners\]\]' "$config"; }
+
+if [ -n "$token" ]; then
+    mkdir -p "$(dirname "$config")"
+    if [ -f "$config" ] && grep -qF "token = \"$token\"" "$config"; then
+        echo "This token is already registered in $config."
+    else
+        set -- register --non-interactive --config "$config" --url "$url" --name "$name" --executor "$executor"
+        case "$token" in
+            glrt-*) set -- "$@" --token "$token" ;;
+            # Legacy registration tokens carry their settings on the command line.
+            *) set -- "$@" --registration-token "$token" --run-untagged=true ;;
+        esac
+        [ "$executor" = docker ] && set -- "$@" --docker-image "$image"
+        if ! "$bin" "$@"; then
+            echo "Registering with $url failed. Check the URL and that the token is the one GitLab showed for this runner."
+            exit 1
+        fi
+    fi
+fi
+
+if ! registered; then
+    echo "GitLab Runner $installed is installed at $bin, not registered yet."
+    echo "Edit this snippet: set url and token (Settings > CI/CD > Runners > New project runner), then run it again."
+    exit 0
+fi
+
+# gitlab-runner installs itself as a systemd, OpenRC or SysV service; where
+# none of them runs (WSL without systemd, containers) start fails and it
+# runs in the background instead.
+pidfile=/run/gitlab-runner-background.pid
+log=/var/log/gitlab-runner.log
+# A runner an earlier run left in the background would double up with the
+# service, or keep an old binary. SIGQUIT lets it finish its current jobs.
+# Only while the pid is still that runner: the number may have been reused.
+pid=$(cat "$pidfile" 2>/dev/null)
+if [ -n "$pid" ] && tr '\0' ' ' 2>/dev/null <"/proc/$pid/cmdline" | grep -qF "$bin run"; then
+    kill -QUIT "$pid"
+fi
+rm -f "$pidfile"
+"$bin" install --user "$account" --working-directory "$home" --config "$config" >/dev/null 2>&1
+if "$bin" restart >/dev/null 2>&1 && sleep 2 && "$bin" status >/dev/null 2>&1; then
+    how="as a service that starts with the distro"
+else
+    # setsid + nohup: it has to outlive the terminal the snippet ran in.
+    setsid nohup "$bin" run --user "$account" --working-directory "$home" --config "$config" >>"$log" 2>&1 </dev/null &
+    echo $! >"$pidfile"
+    sleep 3
+    if ! kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+        tail -20 "$log"
+        echo "GitLab Runner did not stay up (log: $log)."
+        exit 1
+    fi
+    how="in the background (log: $log) until the distro stops. For a service that starts with the distro, turn on systemd (WSL: [boot] systemd=true in /etc/wsl.conf) and run this again"
+fi
+
+# verify asks GitLab whether each registered runner is still accepted.
+check=$("$bin" verify --config "$config" 2>&1)
+if ! printf '%s' "$check" | grep -q "is valid"; then
+    printf '%s\n' "$check"
+    echo "GitLab did not accept the runner."
+    exit 1
+fi
+echo "GitLab Runner $installed \"$name\" ($executor executor) is online, $how."
+echo "Registered runners live in $config. To remove one: gitlab-runner unregister --name <name>"

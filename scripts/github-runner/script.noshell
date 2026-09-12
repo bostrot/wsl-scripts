@@ -1,0 +1,242 @@
+#####################################################
+# @name: github-runner
+# @description: Self-hosted GitHub Actions runner as a service. Edit the snippet first and paste your repo/org URL and the registration token from Settings > Actions > Runners > New self-hosted runner
+# @version: 1.0.0
+# @author: bostrot
+# @license: MIT
+# @git: https://github.com/bostrot/wsl-scripts
+# @distro: Debian, Ubuntu, Fedora, Arch
+#####################################################
+# Installs GitHub's self-hosted runner (https://github.com/actions/runner)
+# into /opt/actions-runner, owned by a dedicated github-runner account: the
+# runner refuses to run as root, and jobs should not have root anyway. The
+# tarball is checked against the SHA-256 GitHub publishes in the release
+# notes. x64, arm64 and arm builds are picked by CPU, so the same snippet
+# works in a WSL distro and in a Linux VM on an Apple Silicon Mac.
+#
+# With url and token filled in below it registers the runner and starts it:
+# as a systemd service when the distro runs systemd, otherwise in the
+# background for as long as the distro runs. Left empty, it only installs
+# and prints how to register later.
+#
+# Idempotent: a runner that is already registered is left registered and
+# just (re)started; move it elsewhere by removing it first (see the end).
+
+# ===== Fill in before running ============================================
+# Where the runner registers: a repository (https://github.com/OWNER/REPO)
+# or an organisation (https://github.com/ORG).
+url=""
+# Registration token: Settings > Actions > Runners > New self-hosted runner,
+# the value after --token. GitHub expires it an hour after showing it.
+token=""
+# Optional: the runner's name (default: this machine's name plus the WSL
+# distro's) and extra comma-separated labels on top of self-hosted, Linux
+# and the architecture.
+name=""
+labels=""
+# =========================================================================
+# RUNNER_URL, RUNNER_TOKEN, RUNNER_NAME and RUNNER_LABELS in the environment
+# win over the values above — that is how CI drives this without editing it.
+url="${RUNNER_URL:-$url}"
+token="${RUNNER_TOKEN:-$token}"
+name="${RUNNER_NAME:-$name}"
+labels="${RUNNER_LABELS:-$labels}"
+# Every WSL distro on a PC shares its Windows hostname, so the distro name
+# goes in too; otherwise a second distro would take over the first's runner.
+[ -n "$name" ] || name=$(printf '%s' "$(uname -n)${WSL_DISTRO_NAME:+-$WSL_DISTRO_NAME}" | tr -c 'A-Za-z0-9._-' -)
+dir="${RUNNER_DIR:-/opt/actions-runner}"
+account=github-runner
+
+if [ "$(uname -s)" != Linux ]; then
+    echo "This is the Linux runner. On macOS use the github-runner-macos snippet."
+    exit 1
+fi
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Run this as root (the app's default for snippets): it creates the $account account and installs to $dir."
+    exit 1
+fi
+if [ -f /etc/alpine-release ]; then
+    echo "GitHub's runner is built against glibc and does not run on Alpine (musl). Use a Debian, Ubuntu, Fedora or Arch distro."
+    exit 1
+fi
+case "$(uname -m)" in
+    x86_64|amd64) arch=x64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    armv7*|armv8l) arch=arm ;;
+    *) echo "GitHub publishes no runner for this CPU ($(uname -m))."; exit 1 ;;
+esac
+if [ -n "$url$token" ] && { [ -z "$url" ] || [ -z "$token" ]; }; then
+    echo "Fill in both url and token to register the runner, or neither to only install it."
+    exit 1
+fi
+
+# $* stays a plain list of package names on every branch.
+pkg_install() {
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$@"
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y -q "$@"
+    elif command -v pacman >/dev/null 2>&1; then
+        # -u as well: a bare -Sy is a partial upgrade, which Arch does not support.
+        pacman -Syu --noconfirm --needed "$@"
+    else
+        echo "No supported package manager found (apt/dnf/pacman) to install: $*"
+        exit 1
+    fi
+}
+
+# git so actions/checkout clones instead of falling back to a REST download;
+# runuser and useradd are missing from the slimmest Fedora images.
+missing=""
+for tool in curl tar gzip git; do
+    command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+done
+if command -v dnf >/dev/null 2>&1; then
+    command -v runuser >/dev/null 2>&1 || missing="$missing util-linux"
+    command -v useradd >/dev/null 2>&1 || missing="$missing shadow-utils"
+fi
+# $missing stays unquoted on purpose: it is a list of package names.
+if [ -n "$missing" ]; then
+    pkg_install $missing || { echo "Could not install:$missing"; exit 1; }
+fi
+
+if ! id "$account" >/dev/null 2>&1; then
+    useradd --create-home --shell /bin/bash "$account" || {
+        echo "Could not create the $account account."
+        exit 1
+    }
+fi
+home=$(getent passwd "$account" | cut -d: -f6)
+# runuser -u keeps root's environment, HOME included, which the runner
+# would then fail to write to.
+as_runner() {
+    runuser -u "$account" -- env HOME="$home" USER="$account" LOGNAME="$account" "$@"
+}
+# runner.pid outlives a restart of the distro, and by then its number can
+# belong to any other process; it only counts while it is still our run.sh.
+background_pid() {
+    pid=$(cat "$dir/runner.pid" 2>/dev/null) || return 1
+    [ -n "$pid" ] && tr '\0' ' ' 2>/dev/null <"/proc/$pid/cmdline" | grep -qF "$dir/run.sh" && echo "$pid"
+}
+
+if [ -f "$dir/.runner" ]; then
+    echo "A runner is already registered in $dir, keeping it (the runner updates itself)."
+else
+    # The release notes carry one "<!-- BEGIN SHA linux-x64 -->...<!-- END" per
+    # tarball; the API returns them inside the JSON body, on one line.
+    release=$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest) || {
+        echo "Could not ask GitHub for the latest runner release."
+        exit 1
+    }
+    version=$(printf '%s' "$release" | grep -o '"tag_name": *"v[0-9.]*"' | head -1 | grep -o '[0-9][0-9.]*')
+    sha=$(printf '%s' "$release" | grep -o "BEGIN SHA linux-$arch -->[0-9a-f]*" | head -1 | sed 's/.*-->//')
+    if [ -z "$version" ] || [ ${#sha} -ne 64 ]; then
+        echo "The latest runner release lists no version or no linux-$arch checksum."
+        exit 1
+    fi
+    # Already current, e.g. run once before the token was filled in.
+    if [ "$(as_runner "$dir/bin/Runner.Listener" --version 2>/dev/null)" = "$version" ]; then
+        echo "Runner $version is already unpacked in $dir."
+    else
+        tarball="actions-runner-linux-$arch-$version.tar.gz"
+        curl -fsSL "https://github.com/actions/runner/releases/download/v$version/$tarball" -o "/tmp/$tarball" || {
+            echo "Could not download $tarball."
+            rm -f "/tmp/$tarball"
+            exit 1
+        }
+        if ! echo "$sha  /tmp/$tarball" | sha256sum -c - >/dev/null 2>&1; then
+            echo "Checksum failed for $tarball."
+            rm -f "/tmp/$tarball"
+            exit 1
+        fi
+        mkdir -p "$dir"
+        tar -xzf "/tmp/$tarball" -C "$dir" || { echo "Could not unpack $tarball."; rm -f "/tmp/$tarball"; exit 1; }
+        rm -f "/tmp/$tarball"
+        chown -R "$account:" "$dir"
+        echo "Runner $version unpacked to $dir."
+    fi
+fi
+
+# .NET needs ICU, Kerberos, OpenSSL and zlib. GitHub's own script covers
+# apt and dnf; on Arch the packages are named here.
+if command -v pacman >/dev/null 2>&1; then
+    pkg_install icu krb5 openssl zlib || { echo "Could not install the runner's libraries."; exit 1; }
+else
+    bash "$dir/bin/installdependencies.sh" >/tmp/github-runner-deps.log 2>&1 || {
+        tail -20 /tmp/github-runner-deps.log
+        echo "Installing the runner's libraries failed (log: /tmp/github-runner-deps.log)."
+        exit 1
+    }
+fi
+installed=$(as_runner "$dir/bin/Runner.Listener" --version 2>/dev/null)
+if [ -z "$installed" ]; then
+    echo "The runner is unpacked but will not start; missing libraries:"
+    ldd "$dir/bin/libcoreclr.so" | grep 'not found'
+    exit 1
+fi
+
+if [ ! -f "$dir/.runner" ]; then
+    if [ -z "$url" ]; then
+        echo "GitHub Actions runner $installed is installed in $dir, not registered yet."
+        echo "Edit this snippet: set url and token (Settings > Actions > Runners > New self-hosted runner), then run it again."
+        exit 0
+    fi
+    # config.sh looks for ./bin relative to where it is started.
+    set -- --unattended --replace --url "$url" --token "$token" --name "$name" --work _work
+    [ -n "$labels" ] && set -- "$@" --labels "$labels"
+    if ! (cd "$dir" && as_runner ./config.sh "$@"); then
+        echo "Registering with $url failed. Registration tokens expire after an hour: get a fresh one and run the snippet again."
+        exit 1
+    fi
+fi
+
+# svc.sh writes a systemd unit running as $account and records its name in
+# .service. Without systemd the runner is started in the background instead.
+if [ -d /run/systemd/system ]; then
+    # A runner an earlier run left in the background (before systemd was on)
+    # holds the runner's session, and the service's copy would never connect.
+    if pid=$(background_pid); then
+        kill "$pid" && sleep 3
+    fi
+    rm -f "$dir/runner.pid"
+    if [ ! -f "$dir/.service" ]; then
+        (cd "$dir" && ./svc.sh install "$account") || { echo "Could not install the runner service."; exit 1; }
+    fi
+    unit=$(cat "$dir/.service")
+    since=$(date '+%Y-%m-%d %H:%M:%S')
+    systemctl restart "$unit" || { echo "Could not start $unit."; exit 1; }
+    for _i in $(seq 1 30); do
+        journalctl -u "$unit" --since "$since" --no-pager 2>/dev/null | grep -q "Listening for Jobs" && break
+        sleep 1
+    done
+    if ! journalctl -u "$unit" --since "$since" --no-pager 2>/dev/null | grep -q "Listening for Jobs"; then
+        journalctl -u "$unit" --since "$since" -n 30 --no-pager
+        echo "$unit did not come online."
+        exit 1
+    fi
+    how="as the systemd service $unit, which starts with the distro"
+else
+    if background_pid >/dev/null; then
+        echo "The runner is already running."
+    else
+        : >"$dir/runner.log"
+        chown "$account:" "$dir/runner.log"
+        # setsid + nohup: it has to outlive the terminal the snippet ran in.
+        # Neither forks here, so $! is run.sh itself. RUNNER_MANUALLY_TRAP_SIG
+        # makes run.sh pass a TERM on to the listener instead of orphaning it.
+        as_runner sh -c 'cd "$1" && { RUNNER_MANUALLY_TRAP_SIG=1 setsid nohup "$1/run.sh" >>runner.log 2>&1 </dev/null & echo $! >runner.pid; }' _ "$dir"
+    fi
+    for _i in $(seq 1 30); do
+        grep -q "Listening for Jobs" "$dir/runner.log" 2>/dev/null && break
+        sleep 1
+    done
+    if ! grep -q "Listening for Jobs" "$dir/runner.log" 2>/dev/null; then
+        tail -20 "$dir/runner.log"
+        echo "The runner did not come online (log: $dir/runner.log)."
+        exit 1
+    fi
+    how="in the background (log: $dir/runner.log) until the distro stops. For a service that starts with the distro, turn on systemd (WSL: [boot] systemd=true in /etc/wsl.conf) and run this again"
+fi
+
+echo "GitHub Actions runner $installed \"$name\" is online, $how."
+echo "Target it from a workflow with runs-on: self-hosted. To remove it, as root: cd $dir && ./svc.sh uninstall; runuser -u $account -- ./config.sh remove --token <removal token from the runner's page on GitHub>"
