@@ -24,6 +24,6 @@ for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do docker info >/dev/null 2>&1 &&
 docker info >/dev/null 2>&1 || { echo "Docker daemon did not come up."; exit 1; }
 
 docker rm -f wslm-minio >/dev/null 2>&1 || true
-docker pull minio/minio:latest
-docker run -d --name wslm-minio --restart unless-stopped -p 9001:9001 -p 9000:9000 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin minio/minio:latest server /data --console-address ":9001"
+docker pull quay.io/minio/minio:latest
+docker run -d --name wslm-minio --restart unless-stopped -p 9001:9001 -p 9000:9000 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin quay.io/minio/minio:latest server /data --console-address ":9001"
 echo "MinIO is up: console http://localhost:9001 (minioadmin / minioadmin), S3 API on port 9000."
