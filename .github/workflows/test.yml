@@ -59,9 +59,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # A fresh container stands in for a fresh WSL distro. Nothing gets
-      # registered: the script only meets a made-up token.
+      # registered: the script only meets a made-up token. GITHUB_TOKEN goes
+      # in because github-runner asks api.github.com for the latest release,
+      # and the 60-an-hour unauthenticated budget is shared with every other
+      # job on this runner's IP address.
       - name: Install, re-run, and reject a made-up token
-        run: docker run --rm -v "$PWD:/repo:ro" "${{ matrix.image }}" sh /repo/ci/run_runner_test.sh "${{ matrix.script }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: docker run --rm -e GITHUB_TOKEN -v "$PWD:/repo:ro" "${{ matrix.image }}" sh /repo/ci/run_runner_test.sh "${{ matrix.script }}"
 
   runner-macos:
     name: ${{ matrix.script }} on macOS
@@ -73,5 +78,9 @@ jobs:
         script: [github-runner-macos, gitlab-runner-macos]
     steps:
       - uses: actions/checkout@v4
+      # The macOS runners share a far smaller pool of IP addresses than the
+      # Linux ones, so the unauthenticated rate limit is reliably gone here.
       - name: Install, re-run, and reject a made-up token
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: sh ci/run_runner_test.sh "${{ matrix.script }}"

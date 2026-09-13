@@ -50,7 +50,10 @@ case "$name" in
 esac
 
 out=$(mktemp)
-run() { $sudo env RUNNER_URL= RUNNER_TOKEN= "$@" sh "$script" >"$out" 2>&1; }
+# GITHUB_TOKEN is named explicitly so it also survives the sudo path, which
+# would otherwise scrub it: github-runner needs it to stay under the
+# api.github.com rate limit. Empty when there is none, which is fine.
+run() { $sudo env RUNNER_URL= RUNNER_TOKEN= GITHUB_TOKEN="${GITHUB_TOKEN:-}" "$@" sh "$script" >"$out" 2>&1; }
 fail() { tail -30 "$out"; echo "FAIL: $*"; exit 1; }
 
 if [ "$name" = github-runner ] && [ -f /etc/alpine-release ]; then

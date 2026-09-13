@@ -124,10 +124,27 @@ if [ -f "$dir/.runner" ]; then
 else
     # The release notes carry one "<!-- BEGIN SHA linux-x64 -->...<!-- END" per
     # tarball; the API returns them inside the JSON body, on one line.
-    release=$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest) || {
-        echo "Could not ask GitHub for the latest runner release."
+    # api.github.com allows 60 calls an hour per IP address, and a shared
+    # address (an office NAT, a CI runner) can have spent them already, so a
+    # 403 here is usually the rate limit rather than a real error. A token in
+    # GITHUB_TOKEN or GH_TOKEN raises that to 5000 and is used when set; it
+    # only reads a public release, so any token, even one with no scopes, does.
+    api=https://api.github.com/repos/actions/runner/releases/latest
+    gh_token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+    release=""
+    for _try in 1 2 3; do
+        if [ -n "$gh_token" ]; then
+            release=$(curl -fsSL -H "Authorization: Bearer $gh_token" "$api") && break
+        else
+            release=$(curl -fsSL "$api") && break
+        fi
+        release=""
+        sleep 5
+    done
+    if [ -z "$release" ]; then
+        echo "Could not ask GitHub for the latest runner release. If this is a 403, api.github.com is rate-limiting this IP address: wait an hour, or set GITHUB_TOKEN to any GitHub token and run this again."
         exit 1
-    }
+    fi
     version=$(printf '%s' "$release" | grep -o '"tag_name": *"v[0-9.]*"' | head -1 | grep -o '[0-9][0-9.]*')
     sha=$(printf '%s' "$release" | grep -o "BEGIN SHA linux-$arch -->[0-9a-f]*" | head -1 | sed 's/.*-->//')
     if [ -z "$version" ] || [ ${#sha} -ne 64 ]; then
