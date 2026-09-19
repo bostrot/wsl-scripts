@@ -1,6 +1,6 @@
 name: captainkyds_scripz
 description: This script builds a command to clean unneeded apt files and upgrade your debian based system (Ubuntu, Debian or Kali).
-version: 1.0.0
+version: 1.0.1
 author: captainkyds
 license: MIT
 git: https://github.com/captainkyds/captainkyds_scripts4wsl.git

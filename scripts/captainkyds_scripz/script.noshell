@@ -1,14 +1,25 @@
-echo "color='tput setaf 5; tput bold" >> /usr/local/bin/upgrade
-echo "reset=tput sgr0"  >> /usr/local/bin/upgrade
-echo '$(color); echo "time to clean out old apt files and upgrade. Here we go."; $(reset)' >> /usr/local/bin/upgrade
-echo '$(color) echo "Starting the cleaning cycle."; $(reset)'  >> /usr/local/bin/upgrade
-echo 'apt clean -y' >> /usr/local/bin/upgrade
-echo 'apt autoremove -y' >> /usr/local/bin/upgrade
-echo '$(color); echo "All done cleaning now updating sources and upgrading your distro"; $(reset)'  >> /usr/local/bin/upgrade
-echo 'apt update' >> /usr/local/bin/upgrade
-echo 'apt upgrade -y' >> /usr/local/bin/upgrade
-echo 'apt dist-upgrade -y' >> /usr/local/bin/upgrade
-echo '$(color); echo "the upgrade has been completed. Enjoy"; $(reset)' >> /usr/local/bin/upgrade
+cat <<- "EOF" > /usr/local/bin/upgrade
+#!/bin/bash
+
+color="tput setaf 5; tput bold"
+reset="tput sgr0"
+
+if [ "$EUID" -ne 0 ]
+  then eval "$color"; echo "Please run as root"; eval "$reset"
+  exit
+fi
+
+eval "$color"; echo "time to clean out old apt files and upgrade. Here we go."; eval "$reset"
+eval "$color"; echo "Starting the cleaning cycle."; eval "$reset"
+apt clean -y
+apt autoremove -y
+eval "$color"; echo "All done cleaning now updating sources and upgrading your distro"; eval "$reset"
+apt update
+apt upgrade -y
+apt dist-upgrade -y
+eval "$color"; echo "the upgrade has been completed. Enjoy"; eval "$reset"
+EOF
+
 chmod +x /usr/local/bin/upgrade
 upgrade
 
@@ -20,7 +31,7 @@ upgrade
 # personally I do every 12 hours cause I don't wanna get caught with an exploitable system
 # To have this script build the cron entry for you delete the # at the start of the next 4 lines
 
- crontab -l
- echo "* */12 * * * /usr/local/bin/upgrade > /dev/null 2>&1" >> crontab_new
- crontab crontab_new
- rm crontab_new
+crontab -l
+echo "* */12 * * * /usr/local/bin/upgrade > /dev/null 2>&1" >> crontab_new
+crontab crontab_new
+rm crontab_new
