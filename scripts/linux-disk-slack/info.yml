@@ -1,0 +1,12 @@
+name: linux-disk-slack
+description: Shows filesystem use inside the distro and runs fstrim. The Windows VHDX stays large until the host compacts it.
+version: 1.0.0
+author: araguaci
+license: MIT
+git: https://github.com/bostrot/wsl-scripts
+distro:
+  - Debian
+  - Ubuntu
+  - Alpine
+  - Fedora
+  - Arch
