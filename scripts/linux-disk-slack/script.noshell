@@ -1,0 +1,15 @@
+#!/bin/sh
+# Reports how much space Linux is using. Does not delete files.
+set -eu
+
+df -hP /
+
+if command -v fstrim >/dev/null 2>&1; then
+    fstrim -v / || echo "fstrim did not complete. The filesystem may not support discard."
+else
+    echo "fstrim is not installed. On Debian or Ubuntu: apt-get install util-linux"
+fi
+
+echo "df is the size inside Linux, not the size of ext4.vhdx on Windows."
+echo "After files are deleted, the VHDX stays large until the host compacts it with every WSL distro stopped."
+echo "Do not pass --allow-unsafe to wsl --manage --set-sparse. Current WSL builds refuse a sparse VHD because of corruption risk."
